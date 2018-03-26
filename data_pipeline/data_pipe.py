@@ -157,51 +157,81 @@ class DataPipe:
         return self
 
     def drop(self, columns: list):
-        return DataPipe(self._df.drop_columns(columns, axis=1))
+        self._df = self._df.drop_columns(columns, axis=1)
+        return self
 
     def keep(self, columns: list):
-        pass
+        if len(columns) == 0:
+            return self
+        self._df = self._df[columns]
+        return self
 
-    def keep_numerics(self, columns: list):
-        pass
+    def keep_numerics(self):
+        self._df = self._df.select_dtypes(include=pd.np.numeric)
+        return self
 
-    def fill_null(self, value="mean"):
-        pass
+    def fill_null(self, columns=None, value="mean"):
+        if columns is None:
+            columns = self._df.select_dtypes(include=pd.np.numeric).columns
+
+        for col in columns:
+            self._fill_column(col, value)
+
+        return self
+
+    def select(self, query: str):
+        self._df = self._df.query(query)
+        return self
+
+    def _fill_column(self, column, value="mean"):
+        if type(value) is str:
+            if value == "mean":
+                mean = self._df[column].mean()
+                self._df[column] = self._df[column].fillna(mean)
+            elif value == "meadian":
+                median = self._df[column].median()
+                self._df[column] = self._df[column].fillna(median)
+            else:
+                self._df[column] = self._df[column].fillna(method=value)
+        else:
+            self._df[column] = self._df[column].fillna(value)
 
     def remove_outliers(self, columns=None, threshold: float = 2.0):
         if columns is None:
-            columns = []
+            columns = self._df.select_dtypes(include=pd.np.numeric).columns
+
+        return self
 
     def drop_sparse(self, threshold: float = 0.05):
-        pass
+        return self
 
     def drop_duplicates(self, key: str = ""):
-        pass
+        return self
 
     def normalize(self, columns=None, norm: str = "l2"):
         if columns is None:
-            columns = []
+            columns = self._df.select_dtypes(include=pd.np.numeric).columns
+        return self
+
+    def anonymize(self, columns: list, keys=None):
+        if keys is None:
+            keys = {}
+        return self
 
     def set_one_hot(self, columns=None, limit: int = 100, with_frequency: bool = True):
         if columns is None:
-            columns = []
+            columns = self._df.select_dtypes(include="object").columns
+
+        return self
 
     def sample(self, size: float = 0.1, seed: int = 0):
-        pass
+        return self
 
     def split_train_test(self, by: str = "", size: float = 0.8, seed: int = 0):
         pass
 
     def creat_folds(self, n_folds: int = 5, stratified: bool = True,
                     seed: int = 0):
-        pass
-
-    def anonymize(self, columns: list, keys=None):
-        if keys is None:
-            keys = {}
-        pass
-
-    def select(self, query: str):
         pass
 
 ####
