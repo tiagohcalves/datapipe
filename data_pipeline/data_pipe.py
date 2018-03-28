@@ -11,14 +11,18 @@ import gzip
 import pickle as pk
 import pandas as pd
 
-from data_pipeline.exceptions import InvalidDataTypeException
+from exceptions import InvalidDataTypeException
 
+
+exclude_decore_methods = set(["load"])
+compressed_extensions = (['.gz', '.bz2', '.zip', '.xz'])
 
 def wrap_all(decorator):
     def decorate(cls):
         for attr in cls.__dict__:  # there's propably a better way to do this
-            if callable(getattr(cls, attr)):
-                setattr(cls, attr, decorator(getattr(cls, attr)))
+            if callable(getattr(cls, attr)) and attr not in exclude_decore_methods:
+                if not attr.startswith("_"):
+                    setattr(cls, attr, decorator(getattr(cls, attr)))
         return cls
 
     return decorate
@@ -27,10 +31,9 @@ def wrap_all(decorator):
 def register_call(method):
     def _wrapper(self, *args, **kwargs):
         name = method.__name__
-        if not name.startswith("__"):
-            self.pipeline.append({
-                name: (args, kwargs)
-            })
+        self._pipeline.append(
+            (name, args, kwargs)
+        )
         reval = method(self, *args, **kwargs)
         return reval
 
@@ -81,7 +84,7 @@ class DataPipe:
         data = DataPipe(raw_data, columns=["random"])
         """
 
-        self.pipeline = []
+        self._pipeline = []
         if data is not None:
             if type(data) is pd.DataFrame:
                 self._df = data
@@ -91,7 +94,34 @@ class DataPipe:
                 except Exception as e:
                     raise InvalidDataTypeException(
                             e, "Could not create DataFrame from data")
+                    
+    #########################
+    # Private Methods
+    #########################
+    
+    def __getattr__(self, name):
+        """
+        Handle missing method call by trying to call directly the pandas dataframe.
+        This lets the DataPipe to be used as an extension to the dataframe.
+        It will not record the call from on the pipeline
+        """
+        def _missing(*args, **kwargs):
+            retval = getattr(self._df, name)
+            if callable(retval):
+                retval = retval(*args, **kwargs)
+            return retval
+        return _missing
+    
+    def __str__(self):
+        return self._df.head().__str__()
+    
+    def __repr__(self):
+        return self._df.head().__repr__()
 
+    ########################
+    # Public methods
+    ########################
+    
     @staticmethod
     def load(filename, **kwargs):
         """Loads the datapipe from a file. 
@@ -110,12 +140,22 @@ class DataPipe:
         data: DataPipe
             DataPipe created from given file.
         """
-        file_extension = os.path.splitext(filename)[1].lower()
+        fname, file_extension = os.path.splitext(filename)
+        file_extension = file_extension.lower() 
+        compression = None
+        
+        if file_extension in compressed_extensions:
+            compression = file_extension.replace(".", "")
+            if compression == "gz":
+                compression = "gzip"
+                
+            file_extension = os.path.splitext(fname)[1].lower()
+        
         if file_extension == ".dtp":
             with gzip.open(filename, "rb") as input_file:
                 return pk.load(input_file)
         elif file_extension == ".json":
-            df = pd.read_json(filename, **kwargs)
+            df = pd.read_json(filename, compression=compression, **kwargs)
         elif file_extension == ".html":
             df = pd.read_html(filename, **kwargs)
         elif file_extension in [".xlsx", ".xls"]:
@@ -125,7 +165,7 @@ class DataPipe:
         elif file_extension == ".pk":
             df = pd.read_pickle(filename, **kwargs)
         else:
-            df = pd.read_csv(filename, **kwargs)
+            df = pd.read_csv(filename, compression=compression, **kwargs)
 
         return DataPipe(df)
 
@@ -153,34 +193,76 @@ class DataPipe:
         :param columns: column label or list of column labels
         :return: DataPipe with index set
         """
-        self._df.set_index(keys=columns)
+        self._df = self._df.set_index(keys=columns)
+        return self
+        
+    def select(self, query: str):
+        """
+        Performs a query on the DataFrame
+        """
+        self._df = self._df.query(query)
         return self
 
     def drop(self, columns: list):
-        self._df = self._df.drop_columns(columns, axis=1)
+        """
+        Drop specified columns
+        """
+        self._df = self._df.drop(columns, axis=1)
         return self
 
     def keep(self, columns: list):
+        """
+        Drop columns not specified
+        """
         if len(columns) == 0:
             return self
         self._df = self._df[columns]
         return self
 
     def keep_numerics(self):
+        """
+        Drop columns that are not numeric
+        """
         self._df = self._df.select_dtypes(include=pd.np.numeric)
         return self
 
+    def drop_sparse(self, threshold: float = 0.05):
+        """
+        Drop sparse columns
+        """
+        n_rows = self._df.shape[0]
+        cols_to_drop = []
+        for column in list(self._df):
+            filled_perc = column.count() / n_rows
+            if filled_perc < threshold:
+                cols_to_drop.append(column)
+        
+        self._df = self._df.drop(cols_to_drop, axis=1)
+        return self
+
+    def drop_duplicates(self, key: str = "",  keep='first'):
+        """
+        Drop duplicated rows
+        """
+        if key == self._df.index.name:
+            self._df = self._df[~self._df.index.duplicated(keep=keep)]
+        elif key != "":
+            self._df = self._df[~self._df[key].duplicated(keep=keep)]
+        else:
+            self._df = self._df.drop_duplicates(keep=keep)
+            
+        return self
+
     def fill_null(self, columns=None, value="mean"):
+        """
+        Fills NaN with a given value/method
+        """
         if columns is None:
             columns = self._df.select_dtypes(include=pd.np.numeric).columns
 
         for col in columns:
             self._fill_column(col, value)
 
-        return self
-
-    def select(self, query: str):
-        self._df = self._df.query(query)
         return self
 
     def _fill_column(self, column, value="mean"):
@@ -196,16 +278,26 @@ class DataPipe:
         else:
             self._df[column] = self._df[column].fillna(value)
 
-    def remove_outliers(self, columns=None, threshold: float = 2.0):
+    def remove_outliers(self, columns=None, threshold: float = 2.0, fill_value = "mean"):
         if columns is None:
             columns = self._df.select_dtypes(include=pd.np.numeric).columns
+        if type(columns) is str:
+            columns = [columns]
 
-        return self
-
-    def drop_sparse(self, threshold: float = 0.05):
-        return self
-
-    def drop_duplicates(self, key: str = ""):
+        for column in columns:
+            col = self._df[column]
+            std_limit = threshold * col.std()
+            dist_to_mean = (col - col.mean()).abs()
+            
+            value = fill_value
+            if type(fill_value) is str:
+                if value == "mean":
+                    value = col.mean()
+                elif value == "meadian":
+                    value = self._df[column].median()
+                
+            self._df.loc[dist_to_mean > std_limit, column] = value
+            
         return self
 
     def normalize(self, columns=None, norm: str = "l2"):
