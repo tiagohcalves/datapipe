@@ -14,6 +14,7 @@ import pandas as pd
 from sklearn.preprocessing import normalize
 
 from exceptions import InvalidDataTypeException
+from one_hot_encoder import Encoder
 
 
 exclude_decore_methods = set(["load"])
@@ -65,7 +66,7 @@ class DataPipe:
     Examples
     -------- 
     """
-    def __init__(self, data=None, **kwargs):
+    def __init__(self, data=None, verbose: bool = True, **kwargs):
         """
         Initiates the DataPipe. If data is provided, it should be a DataFrame
         or numpy ndarray or dict that can have a DataFrame created from.
@@ -88,6 +89,9 @@ class DataPipe:
 
         self._pipeline = []
         self._anon_keys = {}
+        self._one_hot_encoder = Encoder()
+        
+        self._verbose = verbose
         
         if data is not None:
             if type(data) is pd.DataFrame:
@@ -286,7 +290,7 @@ class DataPipe:
         Fills NaN with a given value/method
         """
         if columns is None:
-            columns = self._df.select_dtypes(include=pd.np.number).columns
+            columns = list(self._df.select_dtypes(include=pd.np.number))
 
         for col in columns:
             self._fill_column(col, value)
@@ -308,7 +312,7 @@ class DataPipe:
 
     def remove_outliers(self, columns=None, threshold: float = 2.0, fill_value = "mean"):
         if columns is None:
-            columns = self._df.select_dtypes(include=pd.np.number).columns
+            columns = list(self._df.select_dtypes(include=pd.np.number))
         if type(columns) is str:
             columns = [columns]
 
@@ -333,7 +337,7 @@ class DataPipe:
         Scale columns between 0 and 1
         """
         if columns is None:
-            columns = self._df.select_dtypes(include=pd.np.number).columns
+            columns = list(self._df.select_dtypes(include=pd.np.number))
         
         if type(columns) is str:
             columns = [columns]
@@ -343,6 +347,9 @@ class DataPipe:
         return self
 
     def anonymize(self, columns: list, keys=None, update=True, missing=-1):
+        """
+        Anonymize columns with sequential anonimization
+        """
         if keys is None:
             keys = self._anon_keys
             
@@ -364,10 +371,28 @@ class DataPipe:
         return keys[value]
         
 
-    def set_one_hot(self, columns=None, limit: int = 100, with_frequency: bool = True):
+    def set_one_hot(self, columns=None, limit: int = 100, with_frequency: bool = True, 
+                    keep_columns: bool = False, update=True):
         if columns is None:
-            columns = self._df.select_dtypes(include="object").columns
-
+            columns = list(self._df.select_dtypes(include="object"))            
+            if columns is None:
+                return self
+            
+            for column in columns:
+                # Do not automatically encode columns with too many unique values.
+                # It's probably a mistake.
+                if self._df[column].nunique() > 2 * limit:
+                    columns.remove(column)
+        
+        if update:
+            one_hot_columns = self._one_hot_encoder.fit_transform(self._df[columns], limit, with_frequency)
+        else:
+            one_hot_columns = self._one_hot_encoder.transform(self._df[columns], with_frequency)
+        
+        if not keep_columns:
+            self._df = self._df.drop(columns, axis=1)
+            
+        self._df = pd.concat([self._df, one_hot_columns], axis = 1)
         return self
 
     def split_train_test(self, by: str = "", size: float = 0.8, seed: int = 0):
