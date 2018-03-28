@@ -11,6 +11,8 @@ import gzip
 import pickle as pk
 import pandas as pd
 
+from sklearn.preprocessing import normalize
+
 from exceptions import InvalidDataTypeException
 
 
@@ -85,6 +87,8 @@ class DataPipe:
         """
 
         self._pipeline = []
+        self._anon_keys = {}
+        
         if data is not None:
             if type(data) is pd.DataFrame:
                 self._df = data
@@ -203,6 +207,30 @@ class DataPipe:
         self._df = self._df.query(query)
         return self
 
+    def sample(self, size: float = 0.1, seed: int = 0, inplace=False):
+        """
+        Get a random sample from the DataFrame
+        CAUTION: If inplace=True, it will override the current DataFrame
+        """
+        if 0.0 < size < 1.0:
+            n = None
+            frac = size
+        else:
+            n = size
+            frac = None
+            
+        sample_df = self._df.sample(n, frac)
+        if inplace:
+            self._df = sample_df
+            return self
+        else:
+            new_dp = DataPipe(sample_df)
+            new_dp._pipeline = self._pipeline
+            
+            self._pipeline = self._pipeline[:-1]
+            
+            return new_dp
+
     def drop(self, columns: list):
         """
         Drop specified columns
@@ -223,7 +251,7 @@ class DataPipe:
         """
         Drop columns that are not numeric
         """
-        self._df = self._df.select_dtypes(include=pd.np.numeric)
+        self._df = self._df.select_dtypes(include=pd.np.number)
         return self
 
     def drop_sparse(self, threshold: float = 0.05):
@@ -258,7 +286,7 @@ class DataPipe:
         Fills NaN with a given value/method
         """
         if columns is None:
-            columns = self._df.select_dtypes(include=pd.np.numeric).columns
+            columns = self._df.select_dtypes(include=pd.np.number).columns
 
         for col in columns:
             self._fill_column(col, value)
@@ -280,7 +308,7 @@ class DataPipe:
 
     def remove_outliers(self, columns=None, threshold: float = 2.0, fill_value = "mean"):
         if columns is None:
-            columns = self._df.select_dtypes(include=pd.np.numeric).columns
+            columns = self._df.select_dtypes(include=pd.np.number).columns
         if type(columns) is str:
             columns = [columns]
 
@@ -300,23 +328,46 @@ class DataPipe:
             
         return self
 
-    def normalize(self, columns=None, norm: str = "l2"):
+    def normalize(self, columns=None, axis: int = 0, norm: str = "l2"):
+        """
+        Scale columns between 0 and 1
+        """
         if columns is None:
-            columns = self._df.select_dtypes(include=pd.np.numeric).columns
+            columns = self._df.select_dtypes(include=pd.np.number).columns
+        
+        if type(columns) is str:
+            columns = [columns]
+        
+        self._df[columns] = normalize(self._df[columns], norm=norm, axis=0)
+        
         return self
 
-    def anonymize(self, columns: list, keys=None):
+    def anonymize(self, columns: list, keys=None, update=True, missing=-1):
         if keys is None:
-            keys = {}
+            keys = self._anon_keys
+            
+        for column in columns:
+            self._df[column] = self._df[column].apply(
+                    lambda x: self._get_anon_key(x, keys, update, missing)
+                )
+            
         return self
+
+    def _get_anon_key(self, value, keys, update, missing):
+        if value not in keys:
+            if update:
+                value_key = len(keys)
+                keys[value] = value_key
+            else:
+                return missing
+             
+        return keys[value]
+        
 
     def set_one_hot(self, columns=None, limit: int = 100, with_frequency: bool = True):
         if columns is None:
             columns = self._df.select_dtypes(include="object").columns
 
-        return self
-
-    def sample(self, size: float = 0.1, seed: int = 0):
         return self
 
     def split_train_test(self, by: str = "", size: float = 0.8, seed: int = 0):
