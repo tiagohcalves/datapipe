@@ -19,8 +19,8 @@ from one_hot_encoder import Encoder
 from type_check import get_type
 
 
-exclude_decore_methods = set(["load"])
-compressed_extensions = (['.gz', '.bz2', '.zip', '.xz'])
+exclude_decore_methods = set(["load", "print"])
+compressed_extensions = set(['.gz', '.bz2', '.zip', '.xz'])
 
 ############################
 # Decorators
@@ -284,6 +284,7 @@ class DataPipe:
         :return: DataPipe with index set
         """
         self._df = self._df.set_index(keys=columns)
+        self._check_types(False)
         return self
         
     def select(self, query: str):
@@ -323,6 +324,7 @@ class DataPipe:
         Drop specified columns
         """
         self._df = self._df.drop(columns, axis=1)
+        self._check_types(False)
         return self
 
     def keep(self, columns: list):
@@ -332,6 +334,7 @@ class DataPipe:
         if len(columns) == 0:
             return self
         self._df = self._df[columns]
+        self._check_types(False)
         return self
 
     def keep_numerics(self):
@@ -339,6 +342,7 @@ class DataPipe:
         Drop columns that are not numeric
         """
         self._df = self._df[self._column_type_map["numeric"]]
+        self._check_types(False)
         return self
 
     def drop_sparse(self, threshold: float = 0.05):
@@ -356,6 +360,7 @@ class DataPipe:
                 cols_to_drop.append(column)
         
         self._df = self._df.drop(cols_to_drop, axis=1)
+        self._check_types(False)
         return self
 
     def drop_duplicates(self, key: str = "",  keep='first'):
@@ -446,7 +451,7 @@ class DataPipe:
         :param norm: The norm to use (l1, l2 or max)
         """
         if columns is None:
-            columns = self._df[self._column_type_map["numeric"]]
+            columns = self._column_type_map["numeric"]
         
         if type(columns) is str:
             columns = [columns]
@@ -500,7 +505,7 @@ class DataPipe:
         :param update: if True will create new columns of new values
         """
         if columns is None:
-            columns = self._df[self._column_type_map["string"]]            
+            columns = self._column_type_map["string"]            
             if columns is None:
                 return self
         
@@ -550,3 +555,36 @@ class DataPipe:
     def creat_folds(self, n_folds: int = 5, stratified: bool = True,
                     seed: int = 0):
         pass
+    
+    def print(self, line_width = 60, with_args:bool = True):
+        """
+        Prints the methods called to the datapipe.
+        
+        :params line_width: A integer specifing how many characters in each line
+        or a list with three values, one for method name, one for args and one for
+        kwargs.
+        :params with_args: if True prints the arguments of the methods too.
+        """
+        if type(line_width) is int:
+            width = int(line_width / 3)
+            widths = [width] * 3
+        else:
+            widths = line_width
+        
+        header = ["Method Name", "Args", "Kwargs"]
+        
+        pipeline_str = "_" * (sum(widths)-1) + "|\n"
+        for i, header_str in enumerate(header):
+            pipeline_str += header_str + (' ' * (widths[i] - len(header_str)-1)) + "|"
+        pipeline_str += "\n" + ("_" * (sum(widths)-1)) + "|"
+        
+        for pipe_tuple in self._pipeline:
+            pipeline_str += "\n"
+            for i, info in enumerate(pipe_tuple):
+                info = str(info)
+                if len(info) > widths[i]:
+                    info = info[:widths[i]]
+                pipeline_str += info + (' ' * (widths[i] - len(info)-1)) + "|"
+        
+        pipeline_str += "\n"
+        print(pipeline_str)
