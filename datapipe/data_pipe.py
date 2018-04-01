@@ -274,6 +274,8 @@ class DataPipe:
         :return: DataPipe with types cast
         """
         for column_name, data_type in type_map.items():
+            if self._verbose:
+                print("Casting %s to %s" % (column_name, data_type))
             self._df[column_name] = self._df[column_name].astype(data_type)
             
         return self
@@ -293,6 +295,8 @@ class DataPipe:
         accepted by the pandas `.query()` method.
         """
         self._df = self._df.query(query)
+        if self._verbose:
+            print("%d lines selected" % self._df.shape[0])
         return self
 
     def sample(self, size: float = 0.1, seed: int = 0, inplace=False):
@@ -308,6 +312,10 @@ class DataPipe:
             frac = None
             
         sample_df = self._df.sample(n, frac)
+        
+        if self._verbose:
+            print("%d lines selected" % sample_df.shape[0])
+            
         if inplace:
             self._df = sample_df
             return self
@@ -333,6 +341,11 @@ class DataPipe:
         """
         if len(columns) == 0:
             return self
+        
+        if self._verbose:
+            dropping = set(list(self._df)) - set(columns)
+            print("Dropping columns %s" % dropping)
+        
         self._df = self._df[columns]
         self._check_types(False)
         return self
@@ -341,6 +354,10 @@ class DataPipe:
         """
         Drop columns that are not numeric
         """
+        if self._verbose:
+            dropping = set(list(self._df)) - set(self._column_type_map["numeric"])
+            print("Dropping columns %s" % dropping)
+        
         self._df = self._df[self._column_type_map["numeric"]]
         self._check_types(False)
         return self
@@ -359,6 +376,9 @@ class DataPipe:
             if filled_perc < threshold:
                 cols_to_drop.append(column)
         
+        if self._verbose:
+            print("Dropping columns %s" % cols_to_drop)
+            
         self._df = self._df.drop(cols_to_drop, axis=1)
         self._check_types(False)
         return self
@@ -370,12 +390,17 @@ class DataPipe:
         :param key: Name of the column to perform duplicated check. If not 
         provided, will consider full rows.
         """
+        n_rows = self._df.shape[0]
         if key == self._df.index.name:
             self._df = self._df[~self._df.index.duplicated(keep=keep)]
         elif key != "":
             self._df = self._df[~self._df[key].duplicated(keep=keep)]
         else:
             self._df = self._df.drop_duplicates(keep=keep)
+            
+        if self._verbose:
+            n_unique = self._df.shape[0]
+            print("Found %d duplicated rows" % (n_rows - n_unique))
             
         return self
 
@@ -390,6 +415,9 @@ class DataPipe:
         """
         if columns is None:
             columns = self._column_type_map["numeric"]
+            if self._verbose:
+                print("Fillings columns %s" % columns)
+        
         elif type(columns) is str:
             columns = [columns]
         
@@ -423,6 +451,9 @@ class DataPipe:
         """
         if columns is None:
             columns = self._df[self._column_type_map["numeric"]]
+            if self._verbose:
+                print("Removing outliers from %s" % columns)
+        
         if type(columns) is str:
             columns = [columns]
 
@@ -452,7 +483,9 @@ class DataPipe:
         """
         if columns is None:
             columns = self._column_type_map["numeric"]
-        
+            if self._verbose:
+                print("Normalizing %s" % columns)
+            
         if type(columns) is str:
             columns = [columns]
         
@@ -474,6 +507,8 @@ class DataPipe:
             keys = self._anon_keys
             
         for column in columns:
+            if self._verbose:
+                print("Anonymizing %s" % column)
             self._df[column] = self._df[column].apply(
                     lambda x: self._get_anon_key(x, keys, update, missing)
                 )
@@ -514,7 +549,9 @@ class DataPipe:
                 # It's probably a mistake.
                 if self._df[column].nunique() > 2 * limit:
                         columns.remove(column)
-        
+            if self._verbose:
+                print("Encoding columns %s" % columns)
+                
         if update:
             one_hot_columns = self._one_hot_encoder.fit_transform(self._df[columns], limit, with_frequency)
         else:
