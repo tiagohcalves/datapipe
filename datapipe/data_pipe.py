@@ -1,6 +1,6 @@
 """
-DataPipe extends the pandas DataFrame object in order to provide
-a base object to run pipelines. It should support every method in pandas
+DataPipe wraps the pandas DataFrame object in order to provide
+a base object to run pipelines. It should also support methods in pandas
 Dataframe and provide a few more utilities.
 """
 
@@ -8,6 +8,7 @@ Dataframe and provide a few more utilities.
 
 import os
 import gzip
+import copy
 import pickle as pk
 import pandas as pd
 
@@ -15,14 +16,23 @@ from sklearn.preprocessing import normalize
 
 from exceptions import InvalidDataTypeException
 from one_hot_encoder import Encoder
+from type_check import get_type
 
 
 exclude_decore_methods = set(["load"])
 compressed_extensions = (['.gz', '.bz2', '.zip', '.xz'])
 
+############################
+# Decorators
+############################
+
 def wrap_all(decorator):
+    """
+    Applies a decorator to all methods in a class.
+    Ignores methods listed to exclusion and begining with '_'
+    """
     def decorate(cls):
-        for attr in cls.__dict__:  # there's propably a better way to do this
+        for attr in cls.__dict__:
             if callable(getattr(cls, attr)) and attr not in exclude_decore_methods:
                 if not attr.startswith("_"):
                     setattr(cls, attr, decorator(getattr(cls, attr)))
@@ -32,6 +42,10 @@ def wrap_all(decorator):
 
 
 def register_call(method):
+    """
+    Decorator to record all method calls made to the object 
+    and create checkpoints.
+    """
     def _wrapper(self, *args, **kwargs):
         name = method.__name__
         self._pipeline.append(
@@ -43,14 +57,15 @@ def register_call(method):
     return _wrapper
 
 
+############################
+# Main Class
+############################
+
 @wrap_all(register_call)
 class DataPipe:
-    """DataPipe extends the pandas DataFrame object in order to provide
-    a base object to run pipelines. 
-    
-    It should support every method in pandas Dataframe and provide a few 
-    more utility functions. All actions are based on inplace transformations
-    that can be broadcast and stacked.
+    """DataPipe wraps the pandas DataFrame object in order to provide
+    a base object to run pipelines. It should also support methods in pandas
+    Dataframe and provide a few more utilities.
 
     Parameters
     ----------
@@ -58,15 +73,46 @@ class DataPipe:
         DataFrame that holds the data used in the pipeline. If a DataFrame is
         not provided, it must be possible to build a DataFrame from the data.
 
+    verbose: boolean
+        Print state messages while processing
+
+    parent_pipe: DataPipe
+        If provided, will inherit all attributes from the parent DataPipe
+        
+    force_types: boolean
+        If should automatically cast inferred types. It may slow down the
+        construction of the object.
+    
+    kwargs: keyword arguments
+        Any necessary arguments to construct the Data Frame from the given
+        data and with the pandas DataFrame() call
+    
     Attributes
     ----------
     df: pandas.DataFrame
         DataFrame that holds the data used in the pipeline.
+        
+    pipeline: list
+        Sequence of calls made to the object methods.
+        
+    anon_keys: dict
+        Map of keys and values anonymized. Can be used to de-anonymize the
+        data.
+    
+    one_hot_encoder: Encoder
+        Auxiliar object used to create and mantain one hot encodings.
+    
+    verbose: boolean
+        Flag that indicates if should print state messages.
+        
+    column_type_map: dict
+        Holds the inferred type of each column.
 
     Examples
     -------- 
     """
-    def __init__(self, data=None, verbose: bool = True, **kwargs):
+    def __init__(self, data=None, verbose: bool = True, parent_pipe = None,
+                 force_types: bool = True, **kwargs):
         """
         Initiates the DataPipe. If data is provided, it should be a DataFrame
         or numpy ndarray or dict that can have a DataFrame created from.
@@ -83,16 +129,9 @@ class DataPipe:
         ---
         import numpy as np
         
-        raw_data = np.random.randint(0, 100, 10)
+        raw_data = np.random.randint(0, 100)
         data = DataPipe(raw_data, columns=["random"])
         """
-
-        self._pipeline = []
-        self._anon_keys = {}
-        self._one_hot_encoder = Encoder()
-        
-        self._verbose = verbose
-        
         if data is not None:
             if type(data) is pd.DataFrame:
                 self._df = data
@@ -102,7 +141,21 @@ class DataPipe:
                 except Exception as e:
                     raise InvalidDataTypeException(
                             e, "Could not create DataFrame from data")
-                    
+        
+        if parent_pipe is not None:
+            self._pipeline = copy.deepcopy(parent_pipe._pipeline)
+            self._anon_keys = copy.deepcopy(parent_pipe._anon_keys)
+            self._one_hot_encoder = copy.deepcopy(parent_pipe._one_hot_encoder)
+            self._verbose = parent_pipe._verbose
+            self._column_type_map = copy.deepcopy(parent_pipe._column_type_map)
+        else:
+            self._pipeline = []
+            self._anon_keys = {}
+            self._one_hot_encoder = Encoder()
+            self._verbose = verbose
+            self._check_types(force_types)
+    
+                
     #########################
     # Private Methods
     #########################
@@ -126,22 +179,46 @@ class DataPipe:
     def __repr__(self):
         return self._df.head().__repr__()
 
+    def _check_types(self, force_types:bool = True):
+        self._column_type_map = {
+            "empty": [],
+            "numeric": [],
+            "date": [],
+            "string": []
+        }
+                    
+        for column in self._df:
+            col_type = get_type(self._df[column])
+            if col_type == "empty":
+                self._column_type_map["empty"].append(column)
+            elif col_type == "datetime":
+                if force_types:
+                    self._df[column] = pd.to_datetime(self._df[column])
+                self._column_type_map["date"].append(column)
+            elif col_type == "string":
+                self._column_type_map["string"].append(column)
+            else:
+                self._column_type_map["numeric"].append(column)
+
     ########################
     # Public methods
     ########################
     
     @staticmethod
-    def load(filename, **kwargs):
+    def load(filename, **kwargs) -> 'DataPipe':
         """Loads the datapipe from a file. 
         
         The file may be a datapipe file (.dtp), text file (.csv, .txt, .json,
         etc) or binary (.xlsx, .hdf, etc). This method tries to infer the file
         type by the extension and calls the suitable read function from pandas.
         
+        The file may also be compressed with the following extensions:
+            '.gz', '.bz2', '.zip' and '.xz'
+        
         If the type cannot be inferred, it defaults to csv.
         
-        If every load fails, it recommended to use the ``__init___`` method
-        from a pandas object.
+        If every load fails, it is recommended to use the ``__init__`` method
+        and provide a pandas object.
         
         Returns
         --------
@@ -178,13 +255,17 @@ class DataPipe:
         return DataPipe(df)
 
     def save(self, filename):
-        """Saves the datapipe to a proper object (.dtp)
+        """Saves the datapipe to a compressed object (.dtp)
         """
         with gzip.open(filename + ".dtp", "rb") as output_file:
             pk.dump(self, output_file)
 
-    def as_datapipe(self, func):
-        return DataPipe(func(self))
+    def transform(self, func):
+        """
+        Applies the given function to the underlying dataframe
+        """
+        self._df = func(self._df)
+        return self
 
     def cast_types(self, type_map: dict):
         """
@@ -194,6 +275,7 @@ class DataPipe:
         """
         for column_name, data_type in type_map.items():
             self._df[column_name] = self._df[column_name].astype(data_type)
+            
         return self
 
     def set_index(self, columns: list):
@@ -206,14 +288,15 @@ class DataPipe:
         
     def select(self, query: str):
         """
-        Performs a query on the DataFrame
+        Performs a query on the DataFrame. THe query syntax is the same 
+        accepted by the pandas `.query()` method.
         """
         self._df = self._df.query(query)
         return self
 
     def sample(self, size: float = 0.1, seed: int = 0, inplace=False):
         """
-        Get a random sample from the DataFrame
+        Get a random sample from the DataFrame.
         CAUTION: If inplace=True, it will override the current DataFrame
         """
         if 0.0 < size < 1.0:
@@ -228,7 +311,7 @@ class DataPipe:
             self._df = sample_df
             return self
         else:
-            new_dp = DataPipe(sample_df)
+            new_dp = DataPipe(sample_df, parent_pipe=self)
             new_dp._pipeline = self._pipeline
             
             self._pipeline = self._pipeline[:-1]
@@ -255,17 +338,20 @@ class DataPipe:
         """
         Drop columns that are not numeric
         """
-        self._df = self._df.select_dtypes(include=pd.np.number)
+        self._df = self._df[self._column_type_map["numeric"]]
         return self
 
     def drop_sparse(self, threshold: float = 0.05):
         """
-        Drop sparse columns
+        Drop sparse columns.
+        
+        :param threshold: maximum percentage of values in each column to be
+        considered sparse.
         """
         n_rows = self._df.shape[0]
         cols_to_drop = []
         for column in list(self._df):
-            filled_perc = column.count() / n_rows
+            filled_perc = self._df[column].count() / n_rows
             if filled_perc < threshold:
                 cols_to_drop.append(column)
         
@@ -274,7 +360,10 @@ class DataPipe:
 
     def drop_duplicates(self, key: str = "",  keep='first'):
         """
-        Drop duplicated rows
+        Drop duplicated rows.
+        
+        :param key: Name of the column to perform duplicated check. If not 
+        provided, will consider full rows.
         """
         if key == self._df.index.name:
             self._df = self._df[~self._df.index.duplicated(keep=keep)]
@@ -288,10 +377,17 @@ class DataPipe:
     def fill_null(self, columns=None, value="mean"):
         """
         Fills NaN with a given value/method
+        
+        :param columns: column or list of columns to fill. If None, 
+        will fill all numeric columns.
+        :param value: If a number is given, will replace nulls with the number.
+        If a method is specified (e.g., mean), will use the method instead.
         """
         if columns is None:
-            columns = list(self._df.select_dtypes(include=pd.np.number))
-
+            columns = self._column_type_map["numeric"]
+        elif type(columns) is str:
+            columns = [columns]
+        
         for col in columns:
             self._fill_column(col, value)
 
@@ -311,8 +407,17 @@ class DataPipe:
             self._df[column] = self._df[column].fillna(value)
 
     def remove_outliers(self, columns=None, threshold: float = 2.0, fill_value = "mean"):
+        """
+        Replace outliers with a given value
+        
+        :param columns: column or list of columns to search for outliers.
+        :param threshold: the number of times the standard deviation to consider
+        a value an outlier.
+        :param fill_value: If a number is given, will replace the outliers with
+        the number. Otherwise it should be either the mean or the median.
+        """
         if columns is None:
-            columns = list(self._df.select_dtypes(include=pd.np.number))
+            columns = self._df[self._column_type_map["numeric"]]
         if type(columns) is str:
             columns = [columns]
 
@@ -334,21 +439,31 @@ class DataPipe:
 
     def normalize(self, columns=None, axis: int = 0, norm: str = "l2"):
         """
-        Scale columns between 0 and 1
+        Scale columns between 0 and 1.
+        
+        :param columns: column name or list of columns to normalize
+        :param axis: 0 to normalize columns, 1 to normalize rows
+        :param norm: The norm to use (l1, l2 or max)
         """
         if columns is None:
-            columns = list(self._df.select_dtypes(include=pd.np.number))
+            columns = self._df[self._column_type_map["numeric"]]
         
         if type(columns) is str:
             columns = [columns]
         
-        self._df[columns] = normalize(self._df[columns], norm=norm, axis=0)
+        self._df[columns] = normalize(self._df[columns], norm=norm, axis=axis)
         
         return self
 
     def anonymize(self, columns: list, keys=None, update=True, missing=-1):
         """
-        Anonymize columns with sequential anonimization
+        Anonymize columns with sequential anonimization.
+        
+        :param columns: column name or list of columns to anonymize.
+        :param keys: map with value -> anon value to anonymize the columns
+        :param update: if True, will update the keys with new values
+        :param missing: if update is False, then set the missing keys with
+        this value.
         """
         if keys is None:
             keys = self._anon_keys
@@ -373,16 +488,27 @@ class DataPipe:
 
     def set_one_hot(self, columns=None, limit: int = 100, with_frequency: bool = True, 
                     keep_columns: bool = False, update=True):
+        """
+        Creates one-hot encoding for the values in the columns.
+        
+        :param columns: column name or list of columns to anonymize
+        :param limit: max number of values to encoded. If there are more values 
+        than the limit, will encode the most frequents.
+        :param with_frequency: if True will create a column with the frequency
+        of each value
+        :param keep_columns: if True will keep the original columns
+        :param update: if True will create new columns of new values
+        """
         if columns is None:
-            columns = list(self._df.select_dtypes(include="object"))            
+            columns = self._df[self._column_type_map["string"]]            
             if columns is None:
                 return self
-            
+        
             for column in columns:
                 # Do not automatically encode columns with too many unique values.
                 # It's probably a mistake.
                 if self._df[column].nunique() > 2 * limit:
-                    columns.remove(column)
+                        columns.remove(column)
         
         if update:
             one_hot_columns = self._one_hot_encoder.fit_transform(self._df[columns], limit, with_frequency)
@@ -396,23 +522,31 @@ class DataPipe:
         return self
 
     def split_train_test(self, by: str = "", size: float = 0.8, seed: int = 0):
-        pass
+        """
+        Splits the DataPipe into train datapipe and test datapipe.
+        
+        :param by: if provided, will sort the dataframe by this value to perform
+        the split. Useful for temporal splitting
+        :param size: percentual size of the train set. The test set size will 
+        contain (1 - size) * number_of_rows items.
+        :param seed: random seed used to shuffle the dataframe. Useful for
+        reproducibility.
+        :returns: Train DataPipe and test DataPipe.
+        """
+        if by != "":
+            self._df = self._df.sort_values(by)
+        else:
+            self._df = self._df.sample(frac=1, random_state = seed)
+        
+        n_rows = self._df.shape[0]
+        train_size = int(n_rows * size)
+            
+        train_df = self._df.iloc[:train_size]
+        test_df = self._df.iloc[train_size:n_rows]
+        
+        return DataPipe(train_df, parent_pipe=self), DataPipe(test_df, parent_pipe=self)
+            
 
     def creat_folds(self, n_folds: int = 5, stratified: bool = True,
                     seed: int = 0):
         pass
-
-####
-
-if __name__ == '__main__':
-    import numpy as np
-
-    dp = DataPipe(np.random.randint(0, 100, 100).reshape((10, 10)))
-    print(type(dp))
-    print(dp)
-    dp = dp.as_datapipe(lambda x: x.transpose())
-    print(type(dp))
-    print(dp)
-    dp = dp.transpose()
-    print(type(dp))
-    print(dp)
