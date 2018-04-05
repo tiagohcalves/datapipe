@@ -19,7 +19,8 @@ from one_hot_encoder import Encoder
 from type_check import get_type
 
 
-exclude_decore_methods = set(["load", "print"])
+exclude_decore_methods = set(["load", "save", "print", "disable_checkpoint", 
+                              "enable_checkpoint"])
 compressed_extensions = set(['.gz', '.bz2', '.zip', '.xz'])
 
 ############################
@@ -51,7 +52,13 @@ def register_call(method):
         self._pipeline.append(
             (name, args, kwargs)
         )
+        
         reval = method(self, *args, **kwargs)
+        
+        if self._checkpoint:
+            point_name = "%s_ckp_%d" % (self._checkpoint_path, len(self._pipeline))
+            self.save(point_name)
+            
         return reval
 
     return _wrapper
@@ -86,6 +93,12 @@ class DataPipe:
     kwargs: keyword arguments
         Any necessary arguments to construct the Data Frame from the given
         data and with the pandas DataFrame() call
+        
+    checkpoint: None or string
+        If provided this should be a directory where will be saved a copy of 
+        the data for each function called.
+        WARNING: May consume a high amount of disk space and slow down the 
+        pipeline processing.
     
     Attributes
     ----------
@@ -112,7 +125,7 @@ class DataPipe:
     -------- 
     """
     def __init__(self, data=None, verbose: bool = True, parent_pipe = None,
-                 force_types: bool = True, **kwargs):
+                 force_types: bool = True, checkpoint: str = None, **kwargs):
         """
         Initiates the DataPipe. If data is provided, it should be a DataFrame
         or numpy ndarray or dict that can have a DataFrame created from.
@@ -142,20 +155,28 @@ class DataPipe:
                     raise InvalidDataTypeException(
                             e, "Could not create DataFrame from data")
         
+
+        self._checkpoint = False
+        
         if parent_pipe is not None:
             self._pipeline = copy.deepcopy(parent_pipe._pipeline)
             self._anon_keys = copy.deepcopy(parent_pipe._anon_keys)
             self._one_hot_encoder = copy.deepcopy(parent_pipe._one_hot_encoder)
-            self._verbose = parent_pipe._verbose
             self._column_type_map = copy.deepcopy(parent_pipe._column_type_map)
+            self._verbose = parent_pipe._verbose
+            self._checkpoint = parent_pipe._checkpoint
         else:
             self._pipeline = []
             self._anon_keys = {}
             self._one_hot_encoder = Encoder()
             self._verbose = verbose
             self._check_types(force_types)
-    
-                
+            self._checkpoint_path = checkpoint
+
+            if self._checkpoint_path:
+                self.enable_checkpoint(self._checkpoint_path)
+            
+            
     #########################
     # Private Methods
     #########################
@@ -257,7 +278,7 @@ class DataPipe:
     def save(self, filename):
         """Saves the datapipe to a compressed object (.dtp)
         """
-        with gzip.open(filename + ".dtp", "rb") as output_file:
+        with gzip.open(filename + ".dtp", "wb") as output_file:
             pk.dump(self, output_file)
 
     def transform(self, func):
@@ -493,7 +514,7 @@ class DataPipe:
         
         return self
 
-    def anonymize(self, columns: list, keys=None, update=True, missing=-1):
+    def anonymize(self, columns, keys=None, update=True, missing=-1):
         """
         Anonymize columns with sequential anonimization.
         
@@ -505,6 +526,9 @@ class DataPipe:
         """
         if keys is None:
             keys = self._anon_keys
+           
+        if type(columns) is str:
+            columns = [columns]
             
         for column in columns:
             if self._verbose:
@@ -623,5 +647,28 @@ class DataPipe:
                     info = info[:widths[i]]
                 pipeline_str += info + (' ' * (widths[i] - len(info)-1)) + "|"
         
-        pipeline_str += "\n"
+        pipeline_str += "\n" + ("_" * (sum(widths)-1)) + "|"
         print(pipeline_str)
+        
+    def disable_checkpoint(self):
+        """
+        Disables checkpointing each method. 
+        Does not remove checkpoints created.
+        """
+        self._checkpoint = False
+        return self
+    
+    def enable_checkpoint(self, path: str = ""):
+        """
+        Enables checkpointing each method. If there was no previous checkpoint,
+        the path must be specified
+        
+        :params path: Path to savbe 
+        """
+        self._checkpoint = True 
+        
+        try:
+            self._checkpoint_path = path
+            os.makedirs(self._checkpoint_path)
+        except OSError:
+            pass            
