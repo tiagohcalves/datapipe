@@ -7,10 +7,9 @@ setup(name='datapipe',
       author='Tiago Alves',
       author_email='tiagohcalves@gmail.com',
       license='MIT',
-      packages=['dpipe'],
+      packages=['datapipe'],
       install_requires=[
-          'pickle',
           'pandas',
           'sklearn'
-      ]
+      ],
       zip_safe=False)

@@ -9,14 +9,14 @@ Dataframe and provide a few more utilities.
 import os
 import gzip
 import copy
-import pickle as pk
 import pandas as pd
 
 from sklearn.preprocessing import normalize
+from sklearn.externals import joblib
 
-from exceptions import InvalidDataTypeException
-from one_hot_encoder import Encoder
-from type_check import get_type
+from .exceptions import InvalidDataTypeException
+from .one_hot_encoder import Encoder
+from .type_check import get_type
 
 
 exclude_decore_methods = set(["load", "save", "print", "disable_checkpoint", 
@@ -259,7 +259,7 @@ class DataPipe:
         
         if file_extension == ".dtp":
             with gzip.open(filename, "rb") as input_file:
-                return pk.load(input_file)
+                return joblib.load(input_file)
         elif file_extension == ".json":
             df = pd.read_json(filename, compression=compression, **kwargs)
         elif file_extension == ".html":
@@ -279,7 +279,7 @@ class DataPipe:
         """Saves the datapipe to a compressed object (.dtp)
         """
         with gzip.open(filename + ".dtp", "wb") as output_file:
-            pk.dump(self, output_file)
+            joblib.dump(self, output_file)
 
     def transform(self, func):
         """
