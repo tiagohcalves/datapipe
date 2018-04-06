@@ -375,6 +375,7 @@ class DataPipe:
         """
         Drop columns that are not numeric
         """
+        self._check_types(False)
         if self._verbose:
             dropping = set(list(self._df)) - set(self._column_type_map["numeric"])
             print("Dropping columns %s" % dropping)
@@ -398,7 +399,10 @@ class DataPipe:
                 cols_to_drop.append(column)
         
         if self._verbose:
-            print("Dropping columns %s" % cols_to_drop)
+            if len(cols_to_drop) > 0:
+                print("Dropping sparse columns %s" % cols_to_drop)
+            else:
+                print("No sparse columns to drop")
             
         self._df = self._df.drop(cols_to_drop, axis=1)
         self._check_types(False)
@@ -473,7 +477,7 @@ class DataPipe:
         if columns is None:
             columns = self._df[self._column_type_map["numeric"]]
             if self._verbose:
-                print("Removing outliers from %s" % columns)
+                print("Removing outliers from %s" % list(columns))
         
         if type(columns) is str:
             columns = [columns]

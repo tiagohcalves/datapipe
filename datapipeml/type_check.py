@@ -14,7 +14,8 @@ def check_int(series):
         # Possibly boolean
         unique = series.unique()
         if (unique[0] == 0 or unique[0] == 1) and (unique[1] == 0 or unique[1] == 1):
-            return "bool"
+#            return "bool"
+            return "int"
     # only remove the type specification
     return "int"
 
@@ -27,7 +28,8 @@ def check_float(series, has_null, n):
         # Possibly boolean
         unique = series.unique()
         if (unique[0] == 0.0 or unique[0] == 1.0) and (unique[1] == 0.0 or unique[1] == 1.0):
-            return "bool"
+#            return "bool"
+            return "float"
     # check if the column is actually a nullable int
     all_integer = series.sample(n).apply(lambda x: x.is_integer()).all()
     if all_integer:
@@ -69,7 +71,7 @@ def get_type(series):
     if n == 0:
         # If the column is empty, there is no data type
         return "empty"
-    elif col_type == "int64":
+    elif col_type in ["int64", "uint8"]:
         return check_int(series)
     elif col_type == "float64":
         return check_float(series, has_null, n)
