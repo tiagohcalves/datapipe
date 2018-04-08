@@ -11,6 +11,7 @@ Basic concepts:
 
 ## Example
 
+### Full pipeline with time split
 ```
 >>> from datapipeml import DataPipe
 
@@ -33,11 +34,12 @@ Fillings columns ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months'
 Removing outliers from ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months', 'lender_count']
 Normalizing ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months', 'lender_count']
 Encoding columns ['activity', 'sector', 'country_code', 'country', 'currency', 'repayment_interval']
-Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
-Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
         
 >>> X.keep_numerics()
 >>> y.keep_numerics()
+
+Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
+Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
 
 >>> X.print()
 ___________________________________________________________|
@@ -55,4 +57,26 @@ set_one_hot        |()                 |{}                 |
 split_train_test   |()                 |{'by': 'date'}     |
 keep_numerics      |()                 |{}                 |
 ___________________________________________________________|
+```
+
+### Create target column and stratified folds
+```
+>>> folds = DataPipe.load("data/kiva_loans_sample.csv.gz")\
+>>>         .set_index("id")\
+>>>         .drop_duplicates()\
+>>>         .fill_null()\
+>>>         .remove_outliers()\
+>>>         .normalize()\
+>>>         .set_one_hot()\
+>>>         .create_column("high_loan", lambda x: 1 if x["loan_amount"] > 2000 else 0)\
+>>>         .keep_numerics()\
+>>>         .create_folds(stratify_by="high_loan")
+        
+Found 0 duplicated rows
+Fillings columns ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months', 'lender_count']
+Removing outliers from ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months', 'lender_count']
+Normalizing ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months', 'lender_count']
+One-hot encoding columns ['activity', 'sector', 'country_code', 'country', 'currency', 'borrower_genders', 'repayment_interval']
+Creating column high_loan
+Dropping columns {'tags', 'funded_time', 'disbursed_time', 'region', 'use', 'posted_time', 'date'}
 ```
