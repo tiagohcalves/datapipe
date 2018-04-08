@@ -22,6 +22,14 @@ git clone https://github.com/tiagohcalves/datapipe.git
 cd datapipe
 pip install .
 ```
+### Dependencies
+
+DataPipeML has the following requirements:
+
+* [Pandas](https://github.com/pandas-dev/pandas): 0.22 or higher
+* [Sklearn](http://scikit-learn.org/stable/): 0.19.1 or higher
+
+Older versions might work but are untested.
 
 ## Example
 
