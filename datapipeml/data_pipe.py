@@ -13,13 +13,14 @@ import pandas as pd
 
 from sklearn.preprocessing import normalize
 from sklearn.externals import joblib
+from sklearn.model_selection import KFold, StratifiedKFold
 
 from .exceptions import InvalidDataTypeException
 from .one_hot_encoder import Encoder
 from .type_check import get_type
 
 
-exclude_decore_methods = set(["load", "save", "print", "disable_checkpoint", 
+exclude_decore_methods = set(["load", "save", "summary", "disable_checkpoint", 
                               "enable_checkpoint"])
 compressed_extensions = set(['.gz', '.bz2', '.zip', '.xz'])
 
@@ -578,7 +579,7 @@ class DataPipe:
                 if self._df[column].nunique() > 2 * limit:
                         columns.remove(column)
             if self._verbose:
-                print("Encoding columns %s" % columns)
+                print("One-hot encoding columns %s" % columns)
                 
         if update:
             one_hot_columns = self._one_hot_encoder.fit_transform(self._df[columns], limit, with_frequency)
@@ -589,6 +590,18 @@ class DataPipe:
             self._df = self._df.drop(columns, axis=1)
             
         self._df = pd.concat([self._df, one_hot_columns], axis = 1)
+        return self
+
+    def create_column(self, column_name: str, func):
+        """
+        Creates a new column applying a function the the dataframe
+        
+        :params column_name: name of the column being created
+        :params func: function to apply to the dataframe to create the new column
+        """
+        if self._verbose:
+            print("Creating column %s" % column_name)
+        self._df[column_name] = self._df.apply(func, axis=1)
         return self
 
     def split_train_test(self, by: str = "", size: float = 0.8, seed: int = 0):
@@ -617,11 +630,43 @@ class DataPipe:
         return DataPipe(train_df, parent_pipe=self), DataPipe(test_df, parent_pipe=self)
             
 
-    def creat_folds(self, n_folds: int = 5, stratified: bool = True,
-                    seed: int = 0):
-        pass
+    def create_folds(self, n_folds: int = 5, stratify_by: str = "", seed: int = 0,
+                     return_iterator: bool = True):
+        """
+        Create n folds from the data.
+        
+        :params n_folds: number of folds to be created
+        :params stratify_by: if provided, should be the name of the column to 
+        stratify the folds.
+        :params seed: random seed used to shuffle the dataframe. Useful for
+        reproducibility.
+        :params return_iterator: if True, will return an iterable that yields
+        each fold. Otherwise, will return an array of shape n_folds x 2, containing
+        for each fold the train and test sets
+        :returns: Iterable or array with train and test folds
+        """
+        if stratify_by == "":
+            fold_creator = KFold(n_folds, shuffle=True, random_state=seed)
+            split_param = {"X": self._df}
+        else:
+            fold_creator = StratifiedKFold(n_folds, shuffle=True, random_state=seed)
+            X = self._df.loc[:, self._df.columns != stratify_by]
+            y = self._df.loc[:, stratify_by]
+            split_param = {"X": X, "y": y}
+
+        if return_iterator:
+            return fold_creator.split(**split_param)
+        else:
+            folds = []
+            for train_idx, test_idx in fold_creator.split(**split_param):
+                folds.append([
+                    DataPipe(self._df.iloc[train_idx], parent_pipe=self),
+                    DataPipe(self._df.iloc[test_idx], parent_pipe=self)
+                ])
+            return folds
+            
     
-    def print(self, line_width = 60, with_args:bool = True):
+    def summary(self, line_width = 60, with_args:bool = True):
         """
         Prints the methods called to the datapipe.
         
