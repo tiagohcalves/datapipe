@@ -31,6 +31,21 @@ DataPipeML has the following requirements:
 
 Older versions might work but are untested.
 
+### Testing
+
+To run the unit tests, we recommend [Nose](http://nose.readthedocs.io/en/latest/). Just run:
+
+```
+cd datapipe/datapipeml/tests/
+nosetests test_pipeline.py
+```
+
+..........................
+----------------------------------------------------------------------
+Ran 26 tests in 0.237s
+
+OK
+
 ## Example
 
 ### Full pipeline with time split
