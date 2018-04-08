@@ -155,7 +155,7 @@ class DataPipe:
                 self._df = data
             else:
                 try:
-                    self.df = pd.DataFrame(data, **kwargs)
+                    self._df = pd.DataFrame(data, **kwargs)
                 except Exception as e:
                     raise InvalidDataTypeException(
                             e, "Could not create DataFrame from data")
@@ -199,6 +199,20 @@ class DataPipe:
             return retval
         return _missing
     
+    def __getstate__(self):
+        """
+        Explicitly implemented to avoid conflict with `__getattr__` when
+        pickling the object.
+        """
+        return self.__dict__
+    
+    def __setstate__(self, d):
+        """
+        Explicitly implemented to avoid conflict with `__getattr__` when
+        unpickling the object.
+        """
+        self.__dict__ = d
+     
     def __str__(self):
         return self._df.head().__str__()
     
@@ -214,17 +228,18 @@ class DataPipe:
         }
                     
         for column in self._df:
-            col_type = get_type(self._df[column])
+            col_type, cast_to = get_type(self._df[column])
             if col_type == "empty":
                 self._column_type_map["empty"].append(column)
             elif col_type == "datetime":
-                if force_types:
-                    self._df[column] = pd.to_datetime(self._df[column])
                 self._column_type_map["date"].append(column)
             elif col_type == "string":
                 self._column_type_map["string"].append(column)
             else:
                 self._column_type_map["numeric"].append(column)
+
+            if force_types and cast_to is not None:
+                self._df[column] = self._df[column].map(cast_to)
 
     ########################
     # Public methods
@@ -373,7 +388,8 @@ class DataPipe:
             print("Dropping columns %s" % dropping)
         
         self._df = self._df[columns]
-        self._check_types(False)
+        if type(self._df) is pd.Series:
+            self._df = self._df.to_frame()
         return self
 
     def keep_numerics(self):
@@ -725,3 +741,5 @@ class DataPipe:
             os.makedirs(self._checkpoint_path)
         except OSError:
             pass            
+        
+        return self

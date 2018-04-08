@@ -45,18 +45,31 @@ def check_object(series, n):
     """
     Infer correct type of series considered as object
     """
+    sample = series.sample(n)
     try:
-        pd.to_datetime(series.sample(n))
-        return "datetime"
+        sample.map(int)
+        return "int", int
+    except:
+        pass
+    
+    try:
+        sample.map(float)
+        return "float", float
+    except:
+        pass
+    
+    try:
+        pd.to_datetime(sample)
+        return "datetime", pd.to_datetime
     except ValueError:
         pass
     if series.nunique() == 2:
         # Possibly boolean
         unique = series.unique()
         if unique[0].lower() in boolean_str_types and unique[1].lower() in boolean_str_types:
-            return "bool"
+            return "bool", None
     # no other type was found, must be a string
-    return "string"
+    return "string", None
 
 
 def get_type(series):
@@ -70,10 +83,10 @@ def get_type(series):
     
     if n == 0:
         # If the column is empty, there is no data type
-        return "empty"
+        return "empty", None
     elif col_type in ["int64", "uint8"]:
-        return check_int(series)
+        return check_int(series), None
     elif col_type == "float64":
-        return check_float(series, has_null, n)
+        return check_float(series, has_null, n), None
     else:
         return check_object(series, n)
