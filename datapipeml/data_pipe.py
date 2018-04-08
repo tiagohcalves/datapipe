@@ -91,16 +91,16 @@ class DataPipe:
         If should automatically cast inferred types. It may slow down the
         construction of the object.
     
-    kwargs: keyword arguments
-        Any necessary arguments to construct the Data Frame from the given
-        data and with the pandas DataFrame() call
-        
     checkpoint: None or string
         If provided this should be a directory where will be saved a copy of 
         the data for each function called.
         WARNING: May consume a high amount of disk space and slow down the 
         pipeline processing.
     
+    kwargs: keyword arguments
+        Any necessary arguments to construct the Data Frame from the given
+        data and with the pandas DataFrame() call
+        
     Attributes
     ----------
     df: pandas.DataFrame
@@ -121,7 +121,11 @@ class DataPipe:
         
     column_type_map: dict
         Holds the inferred type of each column.
-
+        
+    checkpoint: None or string
+        None or directory where will be saved a copy of the data for each 
+        function called.
+        
     Examples
     -------- 
     """
@@ -697,7 +701,7 @@ class DataPipe:
                 pipeline_str += info + (' ' * (widths[i] - len(info)-1)) + "|"
         
         pipeline_str += "\n" + ("_" * (sum(widths)-1)) + "|"
-        print(pipeline_str)
+        return pipeline_str
         
     def disable_checkpoint(self):
         """

@@ -22,7 +22,7 @@ X, y = DataPipe.load("data/kiva_loans_sample.csv.gz")\
 X.keep_numerics()
 y.keep_numerics()
 
-X.print()
+print(X.summary())
 
 
 ###################################################

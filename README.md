@@ -41,7 +41,7 @@ Encoding columns ['activity', 'sector', 'country_code', 'country', 'currency', '
 Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
 Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
 
->>> X.print()
+>>> print(X.summary())
 ___________________________________________________________|
 Method Name        |Args               |Kwargs             |
 ___________________________________________________________|
