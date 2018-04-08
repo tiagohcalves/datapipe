@@ -9,6 +9,20 @@ Basic concepts:
 - Every method called is recorded internally to provide improved reproducibility and understanding of the preparation pipeline. The exception is the "load" method.
 - ‎Data Pipe calls of unimplemented methods default to the internal Data Frame object. This allows quickly accessing some methods, such as shape and head, but please be aware that those calls are not recorded and do not return Data Pipe objects. If it's necessary to use an unimplemented function, please use the Update method to keep manipulating the Data Pipe. 
 
+## Installation
+
+You can install DataPipeML directly from PyPI:
+
+`pip install datapipeml`
+
+Or from source:
+
+```
+git clone https://github.com/tiagohcalves/datapipe.git
+cd datapipe
+pip install .
+```
+
 ## Example
 
 ### Full pipeline with time split
