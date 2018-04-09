@@ -4,7 +4,8 @@ a base object to run pipelines. It should also support methods in pandas
 Dataframe and provide a few more utilities.
 """
 
-# Author: Tiago Alves
+__version__ = '0.8'
+__author__ = "Tiago Alves"
 
 import os
 import gzip
