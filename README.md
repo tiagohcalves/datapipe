@@ -52,7 +52,7 @@ OK
 ```
 >>> from datapipeml import DataPipe
 
->>> X, y = (
+>>> train_dp, test_dp = (
 >>>     DataPipe.load("data/kiva_loans_sample.csv.gz")
 >>>             .anonymize("id")
 >>>             .set_index("id")
@@ -74,13 +74,13 @@ Removing outliers from ['funded_amount', 'loan_amount', 'partner_id', 'term_in_m
 Normalizing ['funded_amount', 'loan_amount', 'partner_id', 'term_in_months', 'lender_count']
 Encoding columns ['activity', 'sector', 'country_code', 'country', 'currency', 'repayment_interval']
         
->>> X.keep_numerics()
->>> y.keep_numerics()
+>>> train_dp.keep_numerics()
+>>> test_dp.keep_numerics()
 
 Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
 Dropping columns {'region', 'posted_time', 'date', 'funded_time', 'borrower_genders', 'disbursed_time', 'use'}
 
->>> print(X.summary())
+>>> print(train_dp.summary())
 ___________________________________________________________|
 Method Name        |Args               |Kwargs             |
 ___________________________________________________________|
