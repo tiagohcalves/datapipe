@@ -7,7 +7,7 @@ from datapipeml import DataPipe
 ###################################################
 # Full pipeline with time split
 
-X, y = (
+train_dp, test_dp = (
     DataPipe.load("data/kiva_loans_sample.csv.gz")
             .anonymize("id")
             .set_index("id")
@@ -21,10 +21,10 @@ X, y = (
             .split_train_test(by="date")
     )
         
-X.keep_numerics()
-y.keep_numerics()
+train_dp.keep_numerics()
+test_dp.keep_numerics()
 
-print(X.summary())
+print(train_dp.summary())
 
 
 ###################################################
