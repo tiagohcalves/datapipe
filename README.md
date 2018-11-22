@@ -38,14 +38,13 @@ To run the unit tests, we recommend [Nose](http://nose.readthedocs.io/en/latest/
 ```
 cd datapipe/datapipeml/tests/
 nosetests test_pipeline.py
-```
 
 ..........................
 ----------------------------------------------------------------------
 Ran 26 tests in 0.237s
 
 OK
-
+```
 ## Example
 
 ### Full pipeline with time split
